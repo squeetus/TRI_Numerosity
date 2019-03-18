@@ -41,6 +41,7 @@ class facility {
 class usage {
   constructor(row) {
     this.id = row.TRI_FACILITY_ID; // foreign key to facility metadata
+    this.state = row.ST;
     this.year = row.YEAR;
     this.chemical = row.CHEMICAL;
 
