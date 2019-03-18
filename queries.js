@@ -2,6 +2,8 @@ const MongoClient = require('mongodb').MongoClient;
 const assert = require('assert');
 const async = require('async');
 
+var usage;
+var facilities;
 
 /*
   Connect to DB
@@ -19,6 +21,9 @@ const async = require('async');
 
     const db = client.db(dbName);
 
+    usage = db.collection('usage');
+    facilities = db.collection('facilities');
+
     async.series([
       function(callback) {
         removeUnusedFacilities(db, function(data) {
@@ -28,18 +33,25 @@ const async = require('async');
       },
 
       function(callback) {
-        query1(db, function(data) {
-          console.log(data.length);
+        getAllFacilities(db, function(data) {
+          console.log('there are', data.length, 'facilities in the database');
           callback(null);
         });
       },
 
-      // function(callback) {
-      //   query1(db, function(data) {
-      //     console.log(data.length);
-      //     callback(null);
-      //   });
-      // }
+      function(callback) {
+        getAllUsage(db, function(data) {
+          console.log('there are', data.length, 'chemical uses in the database');
+          callback(null);
+        });
+      },
+
+      function(callback) {
+        countUsageByState(db, function(data) {
+          console.log('usage totals by state:', data);
+          callback(null);
+        });
+      }
     ]);
 
   } catch (err) {
@@ -48,14 +60,22 @@ const async = require('async');
 })();
 
 // query all facilities
-let query1 = function(db, cb) {
-  const facilities = db.collection('facilities');
+let getAllFacilities = function(db, cb) {
+  // const facilities = db.collection('facilities');
   facilities.find().toArray(function(err, docs) {
     assert.equal(err, null);
     cb(docs);
   });
 };
 
+// query all usage
+let getAllUsage = function(db, cb) {
+  // const usage = db.collection('usage');
+  usage.find().toArray(function(err, docs) {
+    assert.equal(err, null);
+    cb(docs);
+  });
+};
 
 /*
     Remove facilities with no corresponding usage
@@ -83,7 +103,6 @@ var removeUnusedFacilities = function(db, cb) {
 };
 // get distinct facility IDs from usage
 let findUsedFacilities = function(db, cb) {
-  const usage = db.collection('usage');
 
   usage.distinct("id", function(err, ids) {
     assert.equal(err, null);
@@ -92,7 +111,7 @@ let findUsedFacilities = function(db, cb) {
 };
 // remove facilities if they do not appear in distinct ID list
 let deleteUnusedFacilities = function(db, ids, cb) {
-  const facilities = db.collection('facilities');
+  // const facilities = db.collection('facilities');
 
   facilities.deleteMany({"id": {$nin: ids}}, function(err, data) {
     assert.equal(err, null);
@@ -103,3 +122,32 @@ let deleteUnusedFacilities = function(db, ids, cb) {
 
 
 // find the total usage in each state
+let countUsageByState = function(db, cb) {
+  const usage = db.collection('usage');
+
+  usage.aggregate([
+    {
+      $group: {
+          _id: "$state",
+          total_released: {
+            $sum : "$total_released"
+          },
+          total_recycled: {
+            $sum : "$total_recycled"
+          },
+          total_recovered: {
+            $sum : "$total_recovered"
+          },
+          total_treated: {
+            $sum : "$total_treated"
+          },
+          total_usage: {
+            $sum: {$add : ["$total_released", "$total_recycled", "$total_recovered", "$total_treated"]}
+          }
+        }
+    }
+  ]).toArray(function(err, res) {
+    if (err) throw err;
+    console.log(res);
+  });
+};
