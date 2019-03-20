@@ -1,0 +1,50 @@
+html, body {
+    height: 100%;
+    font: 10px sans-serif;
+}
+
+html {
+    display: table;
+    margin: auto;
+}
+
+body {
+    display: table-cell;
+    vertical-align: middle;
+}
+
+svg {
+  margin: 10px;
+}
+
+.node {
+  fill: none;
+  stroke: #ccc;
+  shape-rendering: crispEdges;
+}
+
+#practiceShapes {
+  padding: 50px;
+  margin: auto;
+  font-size:35px;
+  font-family:Sans,Arial;
+}
+
+.practiceItem {
+  width: 150px;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.dot {
+  stroke: #000;
+}
+
+.rect {
+  stroke: #000;
+}
