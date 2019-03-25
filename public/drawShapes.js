@@ -1,4 +1,4 @@
-const bcr = 4;
+const bcr = 6;
 
 function tmp() {
   var tmp = d3.path();
@@ -112,4 +112,15 @@ function threeLine() {
     path.lineTo(bcr * Math.cos(degToRad(150)), bcr * Math.sin(degToRad(150)));
     path.closePath();
   return path;
+}
+
+let allShapes = [sixLine, fiveLine, fourLine, threeLine, circle, square, pentagon, triangle];
+function pickTwo() {
+
+  let i = Math.floor(Math.random()*allShapes.length);
+  let j = Math.floor(Math.random()*allShapes.length);
+
+  if(i == j) return pickTwo();
+
+  return [allShapes[i], allShapes[j]];
 }

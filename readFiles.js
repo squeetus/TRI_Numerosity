@@ -3,7 +3,7 @@ const assert = require('assert');
 const csv = require('csv-parser')
 const fs = require('fs')
 const facilities = {};
-const usages = [];
+let usages = [];
 
 /*
   Unique facility metadata
@@ -42,6 +42,11 @@ class usage {
   constructor(row) {
     this.id = row.TRI_FACILITY_ID; // foreign key to facility metadata
     this.state = row.ST;
+
+    // if coercing the state to a number works, what...
+    // if(!isNaN(+row.ST))
+    //   console.log(row);
+
     this.year = row.YEAR;
     this.chemical = row.CHEMICAL;
 
@@ -55,7 +60,11 @@ class usage {
   }
 }
 
-readDataFile = function(year, cb) {
+readDataFile = function(year, db, cb) {
+  let zeroUsage = 0;
+  let someUsage = 0;
+  usages = [];
+
   fs.createReadStream('./../datafiles/TRI_'+year+'_US.csv')
     .pipe(csv())
     .on('data', (data) => {
@@ -67,18 +76,29 @@ readDataFile = function(year, cb) {
 
       // record chemical usage info (only non-zero data)
       let u = new usage(data);
-      if(u.total_released + u.total_recycled + u.total_recovered + u.total_treated > 0)
+      if(u.total_released + u.total_recycled + u.total_recovered + u.total_treated > 0) {
         usages.push(u);
+        someUsage++;
+      } else {
+        // zero usage
+        zeroUsage++;
+      }
 
     })
     .on('end', () => {
       console.log(Object.keys(facilities).length + ' unique facilities seen; ', usages.length + ' chemical uses logged');
 
-      if(year > 2000)
-        readDataFile(--year, cb);
-      else {
-        cb();
-      }
+
+      console.log(year + ': ' + zeroUsage + ' usages with 0 usage, ' + someUsage + ' usages with >0 usage, ' + usages.length + ' total usages stored.');
+
+
+      saveUsagesToDB(db, function() {
+        if(year > 2000)
+          readDataFile(--year, db, cb);
+        else {
+          cb();
+        }
+      });
     });
 };
 
@@ -100,12 +120,12 @@ readDataFile = function(year, cb) {
     const db = client.db(dbName);
 
     // read all datafiles, then save to db
-    readDataFile(2017, function() {
+    readDataFile(2017, db, function() {
       saveFacilitiesToDB(db, function() {
-        saveUsagesToDB(db, function() {
+        // saveUsagesToDB(db, function() {
           console.log('ok closing db connection');
           client.close();
-        });
+        // });
       });
     });
 
@@ -135,14 +155,14 @@ const saveUsagesToDB = function(db, callback) {
   // Save the chemical usage to the db
   const collection = db.collection('usage');
 
-  // clear old data
-  collection.remove();
+  // // clear old data
+  // collection.remove();
 
   collection.insertMany(usages, function(err, result) {
     assert.equal(err, null);
     assert.equal(usages.length, result.result.n);
     assert.equal(usages.length, result.ops.length);
-    console.log("Inserted", usages.length, "usages");
+    console.log(result.insertedCount, "Inserted", usages.length, "usages");
     callback(result);
   });
 };

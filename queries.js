@@ -132,6 +132,31 @@ var facilities;
 /*
   Connect to DB
 */
+async function getDBConnection() {
+  // Connection URL
+  const url = 'mongodb://localhost:27017/TRI_Parser';
+  // Database Name
+  const dbName = 'TRI_Parser';
+  const client = new MongoClient(url);
+
+  try {
+    // Use connect method to connect to the Server
+    await client.connect();
+
+    const db = client.db(dbName);
+
+    // usage = db.collection('usage');
+    // facilities = db.collection('facilities');
+    console.log("db get");
+
+    return db;
+
+  } catch (err) {
+    console.log('error establishing database connection...', err.stack);
+  }
+}
+
+
 (async function() {
   // Connection URL
   const url = 'mongodb://localhost:27017/TRI_Parser';
@@ -154,7 +179,7 @@ var facilities;
       //     console.log('removed', data, 'unused facilities');
       //     callback(null);
       //   });
-      // },
+      // }
       //
       // function(callback) {
       //   getAllFacilities(db, function(data) {
@@ -184,15 +209,15 @@ var facilities;
       //   });
       // },
       //
-      function(callback) {
-        let conditions = {};
-        conditions.states = ["LA"];
-        conditions.years = allYears;
-        countUsageByFacilityWithConditions(db, conditions, function(data) {
-          console.log('usage totals by facility:', data);
-          callback(null);
-        });
-      },
+      // function(callback) {
+      //   let conditions = {};
+      //   conditions.states = ["LA"];
+      //   conditions.years = allYears;
+      //   countUsageByFacilityWithConditions(db, conditions, function(data) {
+      //     console.log('usage totals by facility:', data);
+      //     callback(null);
+      //   });
+      // },
       //
       // function(callback) {
       //   countUsageByFacilityByYear(db, function(data) {
@@ -224,17 +249,17 @@ var facilities;
       //   });
       // },
 
-      function(callback) {
-        let conditions = {};
-        conditions.facilities = top20_TX_LA;
-        conditions.years = allYears;
-        countUsageBySpecificFacilityPerYearWithConditions(db, conditions, function(data) {
-          console.log('usage totals for each facility/year:', data);
-          writeDataToFile(data);
-          // console.log(data);
-          callback(null);
-        });
-      }
+      // function(callback) {
+      //   let conditions = {};
+      //   conditions.facilities = top20_TX_LA;
+      //   conditions.years = allYears;
+      //   countUsageBySpecificFacilityPerYearWithConditions(db, conditions, function(data) {
+      //     console.log('usage totals for each facility/year:', data);
+      //     writeDataToFile(data);
+      //     // console.log(data);
+      //     callback(null);
+      //   });
+      // }
 
 
     ]);
@@ -337,6 +362,59 @@ let countUsageByState = function(db, cb) {
     cb(res);
   });
 };
+
+
+
+
+// find the total usage in each state
+//  but filter out states with fewer than 100 facilities
+//  (ordered by total usage)
+let countUsageByStateKinda = function(db, cb) {
+  const usage = db.collection('usage');
+
+  usage.aggregate([
+    {
+      $group: {
+          _id: "$state",
+          total_released: {
+            $sum : "$total_released"
+          },
+          total_recycled: {
+            $sum : "$total_recycled"
+          },
+          total_recovered: {
+            $sum : "$total_recovered"
+          },
+          total_treated: {
+            $sum : "$total_treated"
+          },
+          total_usage: {
+            $sum: {$add : ["$total_released", "$total_recycled", "$total_recovered", "$total_treated"]}
+          },
+          facilities: { $addToSet:  "$id"}
+        }
+    },
+    { $unwind: "$facilities" },
+    {
+        $group: {
+            _id: '$_id',
+            count: { $sum: 1 }
+        }
+    },
+    { $match : { count : {$gt : 100} } },
+    {
+        $group: {
+            _id: null,
+            states: { $addToSet: '$_id' }
+        }
+    }
+
+  ]).toArray(function(err, res) {
+    if (err) throw err;
+    cb(res);
+  });
+};
+
 
 
 // find the total usage at each facility
@@ -654,4 +732,70 @@ const writeDataToFile = function(data) {
 
       console.log("The file was saved!");
   });
+};
+
+
+
+module.exports.numerosityTask = async function(constraints, cb) {
+  let db = await getDBConnection();
+
+  if(!constraints.states)
+    constraints.states = allStates;
+  if(!constraints.years)
+    constraints.years = allYears;
+
+  usage = db.collection('usage');
+  facilities = db.collection('facilities');
+
+  usage.aggregate([
+    { $match : { year : {$in : constraints.years} } },
+    { $match :
+      { state :
+        {$in : constraints.states}
+      }
+    },
+    {
+      $group: { // for each unique combo of facility and year, sum up the usage values (for each chemical reported)
+          _id: {facility: "$id", year: "$year"},
+          states: { $addToSet:  "$state"},
+          total_released: {
+            $sum : "$total_released"
+          },
+          total_recycled: {
+            $sum : "$total_recycled"
+          },
+          total_recovered: {
+            $sum : "$total_recovered"
+          },
+          total_treated: {
+            $sum : "$total_treated"
+          },
+          total_usage: {
+            $sum: {$add : ["$total_released", "$total_recycled", "$total_recovered", "$total_treated"]}
+          }
+        }
+    },
+    { $unwind: "$states" },
+    {
+      $group: { // now for each unique facility, produce arrays of years and usage values
+          _id: {facility: "$_id.facility"},
+          all_states: { $addToSet: "$states"},
+          years: { $push: "$_id.year"},
+          yearly_released: { $push: "$total_released" },
+          yearly_recycled: { $push: "$total_recycled" },
+          yearly_recovered: { $push: "$total_recovered" },
+          yearly_treated: { $push: "$total_treated" },
+          yearly_total: { $push: "$total_usage" },
+          overall_total: { $sum: "$total_usage" } // running total across all years
+      }
+    },
+    {$sort: {overall_total: -1}} // sort by total usage over time
+  ],
+  { allowDiskUse: true })
+  .toArray(function(err, res) {
+    if (err) throw err;
+    cb(res);
+  });
+
+
 };

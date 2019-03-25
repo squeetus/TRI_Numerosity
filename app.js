@@ -4,11 +4,34 @@ const port = 3000;
 const bodyParser = require('body-parser');
 const fs = require('fs');
 
+const queries = require('./queries.js');
+
 app.use(bodyParser.urlencoded({extended: false}));
 app.use(bodyParser.json());
 app.use(express.static('public'));
 
 app.get('/', (req, res) => res.sendFile(__dirname + '/public/vis.html'));
+
+app.get('/numerosity', (req, res) => res.sendFile(__dirname + '/public/numerosity.html'));
+app.get('/numerosity_data', (req, res) => {
+
+  let constraints = {};
+
+  // specify state
+  if(req.query.states) {
+    let states = JSON.parse(req.query.states);
+    if(Array.isArray(states) && states.length > 0) {
+      constraints.states = states;
+    }
+  }
+
+  // perform db query with given constraints
+  queries.numerosityTask(constraints, function(err, data) {
+    if(err) return res.json(err);
+    res.json(data);
+  });
+});
+
 
 app.get('/get_facilities_TX', (req, res) => res.sendFile(__dirname + '/public/facilities_TX.txt'));
 
